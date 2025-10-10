@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Word⇄Meaning Drill v1 (PWA)</title>
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#101218">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <style>
+    :root{--bg:#0b0c0f;--card:#101218;--muted:#a9adba;--line:#22242c;--btn:#1b1f2a;--btn2:#3a66ff;--ok:#17a34a;--ng:#d5393b}
+    *{box-sizing:border-box}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; margin:0; background:var(--bg); color:#e8e8ea}
+    header{position:sticky; top:0; background:#101218; border-bottom:1px solid var(--line); padding:12px 16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap}
+    h1{font-size:18px; margin:0}
+    main{max-width:1100px; margin:0 auto; padding:24px 16px}
+    .bar{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+    button{background:var(--btn); color:#e8e8ea; border:1px solid #2b3040; padding:10px 14px; border-radius:10px; cursor:pointer}
+    button:hover{background:#242a3a}
+    button.primary{background:var(--btn2); border-color:var(--btn2)}
+    button.primary:hover{filter:brightness(1.05)}
+    .file-input{appearance:none;-webkit-appearance:none; background:var(--btn); color:#e8e8ea; border:1px solid #2b3040; padding:8px 12px; border-radius:10px; cursor:pointer}
+    .file-input:hover{background:#242a3a}
+    .file-input::file-selector-button{background:var(--btn); color:#e8e8ea; border:none; margin-right:8px; padding:8px 10px; border-radius:8px; cursor:pointer}
+    .card{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:20px; box-shadow:0 8px 22px rgba(0,0,0,.25)}
+    .row{display:flex; gap:16px; align-items:center; flex-wrap:wrap}
+    .grow{flex:1}
+    .pill{font-size:12px; padding:4px 8px; border-radius:999px; border:1px solid #2b3040; background:#151825}
+    .muted{color:var(--muted)}
+    .q{font-size:34px; line-height:1.5; white-space:pre-wrap}
+    .a{font-size:26px; line-height:1.5; opacity:0; transition:opacity .12s ease; white-space:pre-wrap}
+    .a.show{opacity:1}
+    .grid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px}
+    @media (max-width:720px){.grid{grid-template-columns:1fr}}
+    .ok{background:var(--ok); border-color:var(--ok)}
+    .ng{background:var(--ng); border-color:var(--ng)}
+    table{width:100%; border-collapse:collapse}
+    th,td{border-bottom:1px solid var(--line); padding:8px 6px; text-align:left}
+    small{color:var(--muted)}
+    .kbd{background:#1b1f2a; border:1px solid #2b3040; padding:2px 6px; border-radius:6px; font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,"Liberation Mono","Courier New",monospace}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Word⇄Meaning Drill v1</h1>
+    <div class="bar">
+      <input id="csvInput" class="file-input" type="file" accept=".csv,text/csv" />
+      <button id="exportProgress">進捗JSONを書き出し</button>
+      <button id="exportLogs">学習履歴をExcel(CSV)で保存</button>
+      <button id="resetAll">全リセット</button>
+      <div class="pill">自動保存: ON（初回のみCSV読込）</div>
+    </div>
+  </header>
+  <main>
+    <section class="card">
+      <div class="row">
+        <div class="grow">
+          <div class="row" style="gap:10px; align-items:baseline">
+            <div class="pill">今日: <span id="todayStr"></span></div>
+            <div class="pill">新出/日: 100語</div>
+            <div class="pill">ルール: 初見×→翌日 / 初見○→+3日→○で+7日</div>
+            <div class="pill">出題順: ランダム（読込後に行をシャッフル）</div>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <button class="primary" id="startBtn">今日のセッション開始</button>
+            <div class="muted">セット＝昨日の初見× + 期日再テスト + 今日の新出100語（全○までループ）</div>
+          </div>
+        </div>
+        <div style="min-width:320px">
+          <table>
+            <tbody>
+              <tr><td>総レコード</td><td id="statTotal" style="text-align:right">0</td></tr>
+              <tr><td>学習開始済み</td><td id="statSeen" style="text-align:right">0</td></tr>
+              <tr><td>マスター</td><td id="statMastered" style="text-align:right">0</td></tr>
+              <tr><td>今日の残り</td><td id="statLeft" style="text-align:right">0</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <div style="height:8px"></div>
+
+    <section id="testCard" class="card" style="display:none">
+      <div class="row" style="justify-content:space-between">
+        <div class="pill">Q <span id="qIndex">0</span> / <span id="qTotal">0</span></div>
+        <div class="pill"><span id="queueHint"></span></div>
+      </div>
+
+      <div style="height:8px"></div>
+
+      <div class="q" id="qText"></div>
+      <div style="height:8px"></div>
+      <div class="a" id="aText"></div>
+
+      <div style="height:12px"></div>
+      <div class="grid">
+        <button id="revealBtn">答えを表示 <span class="kbd">Space</span></button>
+        <div></div>
+        <button class="ok" id="btnCorrect">正解 (J/K)</button>
+        <button class="ng" id="btnWrong">不正解 (F)</button>
+      </div>
+      <div style="height:8px"></div>
+      <small class="muted">ショートカット: <span class="kbd">Space</span>答え表示 / <span class="kbd">J</span><span class="kbd">K</span>正解 / <span class="kbd">F</span>不正解</small>
+    </section>
+
+    <div style="height:8px"></div>
+
+    <section class="card">
+      <details>
+        <summary>学習記録（直近200件）</summary>
+        <div class="row" style="margin:8px 0">
+          <button id="refreshLogs">更新</button>
+        </div>
+        <div style="max-height:320px; overflow:auto; border:1px solid #22242c; border-radius:8px">
+          <table>
+            <thead>
+              <tr><th style="width:160px">日時</th><th>出題</th><th>回答</th><th style="width:90px">結果</th></tr>
+            </thead>
+            <tbody id="logsBody"></tbody>
+          </table>
+        </div>
+      </details>
+    </section>
+  </main>
+
+  <script>
+    // PWA Service Worker registration
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(console.error);
+      });
+    }
+
+    // ---------- Constants & helpers ----------
+    const STORE_KEY = 'word_meaning_drill_v1_state';
+    const NEW_PER_DAY = 100; // daily new words
+    function todayStr(){ return new Date().toISOString().slice(0,10); }
+    function dateAdd(dateStr, days){ const d=new Date(dateStr); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); }
+    function shuffleCopy(arr){ const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+    function esc(s){ return (s||'').replace(/[&<>\"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;','\'':'&#39;'}[m])); }
+
+    let state = loadState();
+    const today = todayStr();
+    document.getElementById('todayStr').textContent = today;
+
+    function loadState(){ const raw=localStorage.getItem(STORE_KEY); if(!raw) return {rows:[],cards:{},lastPlannedDate:null,plannedIds:[],todayCorrect:[]}; try{ return JSON.parse(raw); }catch(e){ return {rows:[],cards:{},lastPlannedDate:null,plannedIds:[],todayCorrect:[]}; } }
+    function saveState(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); updateStats(); }
+
+    function updateStats(){
+      const total = state.rows.length;
+      const seen = Object.values(state.cards).filter(c=>c.firstSeen).length;
+      const mastered = Object.values(state.cards).filter(c=>c.stage===4).length;
+      const left = Math.max(0, (state.plannedIds.length - state.todayCorrect.length));
+      document.getElementById('statTotal').textContent = total;
+      document.getElementById('statSeen').textContent = seen;
+      document.getElementById('statMastered').textContent = mastered;
+      document.getElementById('statLeft').textContent = left;
+    }
+
+    // ---------- CSV Import (first run only) ----------
+    document.getElementById('csvInput').addEventListener('change', async (e)=>{
+      const file = e.target.files && e.target.files[0]; if(!file) return;
+      const text = await file.text();
+      const rows = parseCsvText(text);
+      if(!rows.length){ alert('CSVに有効な行がありません'); return; }
+      const shuffled = shuffleCopy(rows);
+      state.rows = shuffled;
+      state.cards = {}; state.lastPlannedDate = null; state.plannedIds = []; state.todayCorrect = [];
+      for(const r of shuffled){ state.cards[r.id] = { firstSeen:null, firstAttemptCorrect:null, tomorrowRetest:false, stage:0, nextDue:null, lastSeen:null, lastResult:null, logs:[] }; }
+      saveState();
+      alert(`読み込み完了: ${rows.length}件。行をランダムに並べ替えました。`);
+      e.target.value = '';
+    });
+
+    // Accepts headers: word,meaning (or 単語,意味)
+    function parseCsvText(text){
+      const lines=text.replace(/\r\n?|\r/g,'\n').split('\n').filter(Boolean);
+      if(!lines.length) return [];
+      const sniff=lines[0]; const delim = sniff.includes('\t')?'\t':(sniff.includes(';')?';':',');
+      const arr = lines.map(r=>r.split(delim));
+      const header = arr[0].map(s=>s.trim()); const lc = header.map(s=>s.toLowerCase());
+      let wi = lc.indexOf('word'); if (wi===-1) wi = header.indexOf('単語');
+      let mi = lc.indexOf('meaning'); if (mi===-1) mi = header.indexOf('意味');
+      if (wi===-1 || mi===-1){ alert('CSVヘッダに word,meaning か 単語,意味 が必要です。'); return []; }
+      const out=[];
+      for(let r=1;r<arr.length;r++){
+        const row=arr[r];
+        const w=(row[wi]||'').trim();
+        const m=(row[mi]||'').trim();
+        if(!(w||m)) continue;
+        out.push({ id:`r_${r}_${w.slice(0,16)}`, word:w, meaning:m });
+      }
+      return out;
+    }
+
+    // ---------- Planning for today ----------
+    document.getElementById('startBtn').addEventListener('click', ()=>{
+      if(!state.rows.length){ alert('まずCSVを読み込んでください（初回のみ）'); return; }
+      if(state.lastPlannedDate !== today){
+        const ids = planToday();
+        state.lastPlannedDate = today;
+        state.plannedIds = shuffleCopy(ids);
+        state.todayCorrect = [];
+        saveState();
+      }
+      startSession();
+    });
+
+    function planToday(){
+      const ids = [];
+      for(const r of state.rows){
+        const c = state.cards[r.id];
+        if(c && c.tomorrowRetest && c.nextDue && c.nextDue <= today){ ids.push(r.id); }
+      }
+      for(const r of state.rows){
+        const c = state.cards[r.id];
+        if(c && !c.tomorrowRetest && c.nextDue === today){ ids.push(r.id); }
+      }
+      const newIds = state.rows.filter(r => state.cards[r.id].stage===0).slice(0, NEW_PER_DAY).map(r=>r.id);
+      ids.push(...newIds);
+      for(const id of newIds){
+        const c = state.cards[id];
+        c.stage = 1; c.firstSeen = today; c.firstAttemptCorrect = null; c.nextDue = null; c.tomorrowRetest = false; c.logs = [];
+      }
+      return [...new Set(ids)];
+    }
+
+    // ---------- Session Engine ----------
+    let queue = [];
+    let lastId = null;
+    let lastQuestionSide = 'word';
+
+    function startSession(){
+      queue = shuffleCopy(state.plannedIds);
+      if(!queue.length){ alert('今日の出題はありません。'); return; }
+      document.getElementById('testCard').style.display='block';
+      document.getElementById('qTotal').textContent = queue.length;
+      document.getElementById('queueHint').textContent = '全て○になるまでランダムに繰り返し';
+      renderNext();
+      updateStats();
+    }
+
+    function pickRandomRemaining(){
+      const remaining = queue.filter(id => !state.todayCorrect.includes(id));
+      if(!remaining.length) return null;
+      const i = Math.floor(Math.random()*remaining.length);
+      return remaining[i];
+    }
+
+    function renderNext(){
+      const nextId = pickRandomRemaining();
+      if(!nextId){ endToday(); return; }
+      lastId = nextId;
+      const r = state.rows.find(x=>x.id===nextId);
+      lastQuestionSide = (Math.random()<0.5 ? 'word' : 'meaning');
+      const q = r[lastQuestionSide] || '';
+      const a = r[lastQuestionSide==='word' ? 'meaning' : 'word'] || '';
+
+      const qEl = document.getElementById('qText');
+      const aEl = document.getElementById('aText');
+      qEl.textContent = q || '(データなし)';
+      aEl.textContent = a || '(データなし)';
+      aEl.classList.remove('show');
+
+      document.getElementById('qIndex').textContent = state.todayCorrect.length + 1;
+      document.getElementById('statLeft').textContent = queue.length - state.todayCorrect.length;
+    }
+
+    document.getElementById('revealBtn').addEventListener('click', ()=>{
+      document.getElementById('aText').classList.add('show');
+    });
+    document.getElementById('btnCorrect').addEventListener('click', ()=>markResult(true));
+    document.getElementById('btnWrong').addEventListener('click', ()=>markResult(false));
+
+    function markResult(correct){
+      if(!lastId) return;
+      const c = state.cards[lastId];
+      const r = state.rows.find(x=>x.id===lastId);
+      const now = Date.now();
+      (c.logs = c.logs || []).push({
+        ts: now, date: today, result: correct ? 'correct' : 'wrong',
+        q: r[lastQuestionSide] || '', a: r[lastQuestionSide==='word'?'meaning':'word'] || '',
+        side: lastQuestionSide
+      });
+      c.lastSeen = today; c.lastResult = correct ? 'correct' : 'wrong';
+
+      if (c.firstAttemptCorrect === null){
+        if (correct){
+          c.firstAttemptCorrect = true;
+          c.stage = 2; c.nextDue = dateAdd(today, 3);
+        } else {
+          c.firstAttemptCorrect = false;
+          c.tomorrowRetest = true; c.nextDue = dateAdd(today, 1);
+        }
+      } else {
+        if (correct){
+          if(!state.todayCorrect.includes(lastId)) state.todayCorrect.push(lastId);
+          if (c.stage === 2){ c.stage = 3; c.nextDue = dateAdd(today, 7); }
+          else if (c.stage === 3){ c.stage = 4; c.nextDue = null; c.tomorrowRetest = false; }
+        } else {
+          if(!c.tomorrowRetest){ c.tomorrowRetest = true; c.nextDue = dateAdd(today, 1); }
+        }
+      }
+      if (correct && !state.todayCorrect.includes(lastId)){
+        state.todayCorrect.push(lastId);
+      }
+      saveState();
+      renderNext();
+      renderLogs();
+    }
+
+    function endToday(){
+      document.getElementById('statLeft').textContent = 0;
+      document.getElementById('queueHint').textContent = '本日のセットは全て○になりました。';
+      alert('本日のセットは全て○になりました。お疲れさまです！');
+      document.getElementById('testCard').style.display='none';
+    }
+
+    // ---------- Keyboard ----------
+    document.addEventListener('keydown', (e)=>{
+      if(e.code==='Space'){ e.preventDefault(); document.getElementById('aText').classList.add('show'); }
+      else if(e.key==='f' || e.key==='F'){ markResult(false); }
+      else if(e.key==='j' || e.key==='J' || e.key==='k' || e.key==='K'){ markResult(true); }
+    });
+
+    // ---------- Logs & Export (Excel CSV) ----------
+    function allLogs(){
+      const rows=[];
+      for(const id in state.cards){
+        const c = state.cards[id]; const L = c.logs || [];
+        for(const g of L){ rows.push({ ts:g.ts||Date.now(), date:g.date||'', q:g.q||'', a:g.a||'', result:g.result||'', side:g.side||'' }); }
+      }
+      rows.sort((a,b)=>(b.ts||0)-(a.ts||0));
+      return rows;
+    }
+    function fmtTs(ts){ try{ return new Date(ts).toLocaleString(); }catch(e){ return ''; } }
+
+    function renderLogs(limit=200){
+      const body = document.getElementById('logsBody'); if(!body) return;
+      const rows = allLogs().slice(0, limit);
+      body.innerHTML = rows.map(r=>'<tr><td>'+fmtTs(r.ts)+'</td><td>'+esc(r.q)+'</td><td>'+esc(r.a)+'</td><td>'+(r.result==='correct'?'○':'×')+'</td></tr>').join('');
+    }
+    document.getElementById('refreshLogs').addEventListener('click', ()=>renderLogs());
+
+    document.getElementById('exportLogs').addEventListener('click', ()=>{
+      const rows = allLogs();
+      const header = ['timestamp','date','question','answer','result','side'];
+      function csvEscape(s){ return '"'+String(s).replace(/"/g,'""')+'"'; }
+      let csv = header.map(csvEscape).join(',') + '\n';
+      csv += rows.map(r=>[r.ts,r.date,r.q,r.a,r.result,r.side].map(csvEscape).join(',')).join('\n');
+      const blob = new Blob(['\ufeff', csv], {type:'text/csv;charset=utf-8'});
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='drill_logs.csv'; a.click(); URL.revokeObjectURL(a.href);
+    });
+
+    document.getElementById('exportProgress').addEventListener('click', ()=>{
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(new Blob([JSON.stringify(state,null,2)],{type:'application/json'}));
+      a.download='drill_progress.json'; a.click(); URL.revokeObjectURL(a.href);
+    });
+
+    document.getElementById('resetAll').addEventListener('click', ()=>{
+      if(confirm('全データ（進捗・ログ）を削除します。よろしいですか？')){
+        localStorage.removeItem(STORE_KEY);
+        state = {rows:[],cards:{},lastPlannedDate:null,plannedIds:[],todayCorrect:[]};
+        location.reload();
+      }
+    });
+
+    // initial
+    updateStats();
+    renderLogs();
+  </script>
+</body>
+</html>
