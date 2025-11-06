@@ -209,8 +209,8 @@ function renderNext(){
   const nextId = pickRandomRemaining(); if(!nextId){ endToday(); return; }
   lastId = nextId;
   const r = state.rows.find(x=>x.id===nextId);
-  lastSide = (Math.random()<0.5?'jp':'th');  // 日本語 or タイ語を問題に
-  const q = lastSide==='jp' ? r.jp : r.th;
+  lastSide = 'jp';                             // ← 日本語のみを問題に固定
+  const q = r.jp;                              // ← 問題は日本語
   const answer = [
     r.ipa ? `IPA：${r.ipa}` : '',
     r.kt  ? `カタカナ発音：${r.kt}` : '',
