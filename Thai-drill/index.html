@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>場所・方向ドリル（日本語⇄タイ語）</title>
+<style>
+:root{--bg:#0b0c0f;--card:#101218;--muted:#a9adba;--line:#22242c;--btn:#1b1f2a;--btn2:#3a66ff;--ok:#17a34a;--ng:#d5393b}
+*{box-sizing:border-box} body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;margin:0;background:var(--bg);color:#e8e8ea}
+header{position:sticky;top:0;background:#101218;border-bottom:1px solid var(--line);padding:12px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+h1{font-size:18px;margin:0} main{max-width:1100px;margin:0 auto;padding:24px 16px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button{background:var(--btn);color:#e8e8ea;border:1px solid #2b3040;padding:10px 14px;border-radius:10px;cursor:pointer}
+button:hover{background:#242a3a} button.primary{background:var(--btn2);border-color:var(--btn2)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:0 8px 22px rgba(0,0,0,.25)}
+.row{display:flex;gap:16px;align-items:center;flex-wrap:wrap}.grow{flex:1}
+.pill{font-size:12px;padding:4px 8px;border-radius:999px;border:1px solid #2b3040;background:#151825}
+.muted{color:var(--muted)} .q{font-size:34px;line-height:1.5;white-space:pre-wrap}
+.a{font-size:22px;line-height:1.6;opacity:0;transition:opacity .12s ease;white-space:pre-wrap}
+.a.show{opacity:1} .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:720px){.grid{grid-template-columns:1fr}}
+.ok{background:var(--ok);border-color:var(--ok)} .ng{background:var(--ng);border-color:var(--ng)}
+table{width:100%;border-collapse:collapse} th,td{border-bottom:1px solid var(--line);padding:8px 6px;text-align:left}
+small{color:var(--muted)} .kbd{background:#1b1f2a;border:1px solid #2b3040;padding:2px 6px;border-radius:6px;font-family:ui-monospace,Consolas,monospace}
+</style>
+</head>
+<body>
+<header>
+  <h1>日本語⇄タイ語 単語ドリル</h1>
+  <div class="bar">
+    <input id="csvInput" type="file" accept=".csv,text/csv" />
+    <button id="startBtn" class="primary">今日のセッション開始</button>
+    <button id="exportLogs">学習履歴CSV</button>
+    <button id="exportProgress">進捗JSON</button>
+    <button id="resetAll">全リセット</button>
+    <div class="pill">初回のみCSVを読み込み／以降は自動保存</div>
+  </div>
+</header>
+
+<main>
+  <section class="card">
+    <div class="row">
+      <div class="grow">
+        <div class="row" style="gap:10px;align-items:baseline">
+          <div class="pill">今日: <span id="todayStr"></span></div>
+          <div class="pill">新出/日: 10語</div>
+          <div class="pill">出題: 日本語 or タイ語 → クリックで「IPA・カタカナ発音・意味」</div>
+          <div class="pill">条件: 初見×→翌日 / 初見○→+3日→○で+7日</div>
+        </div>
+      </div>
+      <div style="min-width:320px">
+        <table><tbody>
+          <tr><td>総レコード</td><td id="statTotal" style="text-align:right">0</td></tr>
+          <tr><td>学習開始済み</td><td id="statSeen" style="text-align:right">0</td></tr>
+          <tr><td>マスター</td><td id="statMastered" style="text-align:right">0</td></tr>
+          <tr><td>今日の残り</td><td id="statLeft" style="text-align:right">0</td></tr>
+        </tbody></table>
+      </div>
+    </div>
+  </section>
+
+  <div style="height:8px"></div>
+
+  <section id="testCard" class="card" style="display:none">
+    <div class="row" style="justify-content:space-between">
+      <div class="pill">Q <span id="qIndex">0</span> / <span id="qTotal">0</span></div>
+      <div class="pill"><span id="queueHint">全て○になるまでランダムに繰り返し</span></div>
+    </div>
+
+    <div style="height:8px"></div>
+
+    <div class="q" id="qText"></div>
+    <div style="height:8px"></div>
+    <div class="a" id="aText" title="スペースキーでも表示できます">（クリックで答えを表示）</div>
+
+    <div style="height:12px"></div>
+    <div class="grid">
+      <button id="revealBtn">答えを表示 <span class="kbd">Space</span></button>
+      <div></div>
+      <button class="ok" id="btnCorrect">正解 (J/K)</button>
+      <button class="ng" id="btnWrong">不正解 (F)</button>
+    </div>
+    <div style="height:8px"></div>
+    <small class="muted">ショートカット: <span class="kbd">Space</span>答え表示 / <span class="kbd">J/K</span>正解 / <span class="kbd">F</span>不正解</small>
+  </section>
+
+  <div style="height:8px"></div>
+
+  <section class="card">
+    <details>
+      <summary>学習記録（直近200件）</summary>
+      <div style="max-height:320px;overflow:auto;border:1px solid #22242c;border-radius:8px">
+        <table>
+          <thead><tr><th style="width:160px">日時</th><th>出題</th><th>回答</th><th style="width:90px">結果</th></tr></thead>
+          <tbody id="logsBody"></tbody>
+        </table>
+      </div>
+    </details>
+  </section>
+</main>
+
+<script>
+const STORE_KEY = 'ja_th_place_drill_v1';
+const NEW_PER_DAY = 10;
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+function dateAdd(d, n){ const x=new Date(d); x.setDate(x.getDate()+n); return x.toISOString().slice(0,10); }
+function shuffleCopy(a){ const b=a.slice(); for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [b[i],b[j]]=[b[j],b[i]]} return b; }
+function esc(s){ return (s||'').replace(/[&<>\"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;','\'':'&#39;'}[m])); }
+
+let state = loadState();
+const today = todayStr();
+document.getElementById('todayStr').textContent = today;
+
+function loadState(){ const raw=localStorage.getItem(STORE_KEY); if(!raw) return {rows:[],cards:{},lastPlannedDate:null,plannedIds:[],todayCorrect:[]}; try{return JSON.parse(raw)}catch(e){return {rows:[],cards:{},lastPlannedDate:null,plannedIds:[],todayCorrect:[]}}}
+function saveState(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); updateStats(); }
+function updateStats(){
+  const total = state.rows.length;
+  const seen = Object.values(state.cards).filter(c=>c.firstSeen).length;
+  const mastered = Object.values(state.cards).filter(c=>c.stage===4).length;
+  const left = Math.max(0, (state.plannedIds.length - state.todayCorrect.length));
+  document.getElementById('statTotal').textContent = total;
+  document.getElementById('statSeen').textContent = seen;
+  document.getElementById('statMastered').textContent = mastered;
+  document.getElementById('statLeft').textContent = left;
+}
+
+// CSV 取込（初回のみ）
+document.getElementById('csvInput').addEventListener('change', async (e)=>{
+  const f = e.target.files && e.target.files[0]; if(!f) return;
+  const text = await f.text();
+  const rows = parseCsv(text);
+  if(!rows.length){ alert('有効な行がありません（ヘッダ名を確認: 日本語,タイ語,IPA,カタカナ発音,意味・補足）'); return; }
+  const shuffled = shuffleCopy(rows);
+  state.rows = shuffled;
+  state.cards = {}; state.lastPlannedDate=null; state.plannedIds=[]; state.todayCorrect=[];
+  for(const r of shuffled){ state.cards[r.id] = { firstSeen:null, firstAttemptCorrect:null, tomorrowRetest:false, stage:0, nextDue:null, lastSeen:null, lastResult:null, logs:[] }; }
+  saveState();
+  alert(`読み込み完了: ${rows.length}件。行をランダムに並べ替えました。`);
+  e.target.value='';
+});
+
+function parseCsv(text){
+  const lines = text.replace(/\r\n?|\r/g,'\n').split('\n').filter(Boolean);
+  if(!lines.length) return [];
+  const sniff = lines[0]; const delim = sniff.includes('\t')?'\t':(sniff.includes(';')?';':',');
+  const arr = lines.map(r=>r.split(delim));
+  const header = arr[0].map(s=>s.trim());
+  const idx = (name) => header.indexOf(name);
+  const ji = idx('日本語'), ti = idx('タイ語'), ip = idx('IPA'), kata = idx('カタカナ発音'), memo = idx('意味・補足');
+  if([ji,ti,ip,kata,memo].some(v=>v===-1)) return [];
+  const out=[];
+  for(let r=1;r<arr.length;r++){
+    const row=arr[r];
+    const jp=(row[ji]||'').trim();
+    const th=(row[ti]||'').trim();
+    const ipa=(row[ip]||'').trim();
+    const kt=(row[kata]||'').trim();
+    const mm=(row[memo]||'').trim();
+    if(!(jp||th)) continue;
+    out.push({ id:`r${r}_${jp.slice(0,12)}_${th.slice(0,12)}`, jp, th, ipa, kt, mm });
+  }
+  return out;
+}
+
+// セッション計画
+document.getElementById('startBtn').addEventListener('click', ()=>{
+  if(!state.rows.length){ alert('まずCSVを読み込んでください（初回のみ）'); return; }
+  if(state.lastPlannedDate !== today){
+    const ids = planToday();
+    state.lastPlannedDate = today;
+    state.plannedIds = shuffleCopy(ids);
+    state.todayCorrect = [];
+    saveState();
+  }
+  startSession();
+});
+
+function planToday(){
+  const ids = [];
+  // 昨日の初見×（同日○でも翌日必出）
+  for(const r of state.rows){ const c=state.cards[r.id]; if(c && c.tomorrowRetest && c.nextDue && c.nextDue <= today){ ids.push(r.id); } }
+  // 期日到来（3日/7日）
+  for(const r of state.rows){ const c=state.cards[r.id]; if(c && !c.tomorrowRetest && c.nextDue === today){ ids.push(r.id); } }
+  // 新出 10語
+  const newIds = state.rows.filter(r => state.cards[r.id].stage===0).slice(0, NEW_PER_DAY).map(r=>r.id);
+  ids.push(...newIds);
+  for(const id of newIds){
+    const c = state.cards[id];
+    c.stage=1; c.firstSeen=today; c.firstAttemptCorrect=null; c.nextDue=null; c.tomorrowRetest=false; c.logs=[];
+  }
+  return [...new Set(ids)];
+}
+
+// 出題エンジン
+let queue=[]; let lastId=null; let lastSide='jp';
+function startSession(){
+  queue = shuffleCopy(state.plannedIds);
+  if(!queue.length){ alert('今日の出題はありません。'); return; }
+  document.getElementById('testCard').style.display='block';
+  document.getElementById('qTotal').textContent = queue.length;
+  renderNext(); updateStats(); renderLogs();
+}
+function pickRandomRemaining(){ const remain = queue.filter(id => !state.todayCorrect.includes(id)); if(!remain.length) return null; return remain[Math.floor(Math.random()*remain.length)]; }
+
+function renderNext(){
+  const nextId = pickRandomRemaining(); if(!nextId){ endToday(); return; }
+  lastId = nextId;
+  const r = state.rows.find(x=>x.id===nextId);
+  lastSide = (Math.random()<0.5?'jp':'th');  // 日本語 or タイ語を問題に
+  const q = lastSide==='jp' ? r.jp : r.th;
+  const answer = [
+    r.ipa ? `IPA：${r.ipa}` : '',
+    r.kt  ? `カタカナ発音：${r.kt}` : '',
+    r.mm  ? `意味・補足：${r.mm}` : ''
+  ].filter(Boolean).join('\n');
+
+  const qEl=document.getElementById('qText'); const aEl=document.getElementById('aText');
+  qEl.textContent = q || '(データなし)'; aEl.textContent = answer || '(データなし)'; aEl.classList.remove('show');
+
+  document.getElementById('qIndex').textContent = state.todayCorrect.length + 1;
+  document.getElementById('statLeft').textContent = queue.length - state.todayCorrect.length;
+}
+
+document.getElementById('aText').addEventListener('click', ()=>document.getElementById('aText').classList.add('show'));
+document.getElementById('revealBtn').addEventListener('click', ()=>document.getElementById('aText').classList.add('show'));
+document.getElementById('btnCorrect').addEventListener('click', ()=>markResult(true));
+document.getElementById('btnWrong').addEventListener('click', ()=>markResult(false));
+
+function markResult(correct){
+  if(!lastId) return;
+  const c = state.cards[lastId];
+  const r = state.rows.find(x=>x.id===lastId);
+  const now = Date.now();
+  const qTxt = lastSide==='jp' ? r.jp : r.th;
+  const aTxt = `IPA: ${r.ipa} / カナ: ${r.kt} / 意味: ${r.mm}`;
+  (c.logs=c.logs||[]).push({ts:now, date:today, result:correct?'correct':'wrong', q:qTxt, a:aTxt});
+  c.lastSeen=today; c.lastResult=correct?'correct':'wrong';
+
+  if (c.firstAttemptCorrect===null){
+    if (correct){ c.firstAttemptCorrect=true; c.stage=2; c.nextDue=dateAdd(today,3); }
+    else { c.firstAttemptCorrect=false; c.tomorrowRetest=true; c.nextDue=dateAdd(today,1); }
+  } else {
+    if (correct){
+      if(!state.todayCorrect.includes(lastId)) state.todayCorrect.push(lastId);
+      if (c.stage===2){ c.stage=3; c.nextDue=dateAdd(today,7); }
+      else if (c.stage===3){ c.stage=4; c.nextDue=null; c.tomorrowRetest=false; }
+    } else {
+      if(!c.tomorrowRetest){ c.tomorrowRetest=true; c.nextDue=dateAdd(today,1); }
+    }
+  }
+  if (correct && !state.todayCorrect.includes(lastId)) state.todayCorrect.push(lastId);
+  saveState(); renderNext(); renderLogs();
+}
+
+function endToday(){
+  document.getElementById('statLeft').textContent = 0;
+  alert('本日のセットは全て○になりました。お疲れさまです！');
+  document.getElementById('testCard').style.display='none';
+}
+
+// キーボード
+document.addEventListener('keydown', (e)=>{
+  if(e.code==='Space'){ e.preventDefault(); document.getElementById('aText').classList.add('show'); }
+  else if(e.key==='f'||e.key==='F'){ markResult(false); }
+  else if(e.key==='j'||e.key==='J'||e.key==='k'||e.key==='K'){ markResult(true); }
+});
+
+// ログ＆エクスポート
+function allLogs(){
+  const rows=[]; for(const id in state.cards){ const c=state.cards[id]; for(const g of (c.logs||[])){ rows.push({ts:g.ts||Date.now(),date:g.date||'',q:g.q||'',a:g.a||'',result:g.result||''}); } }
+  rows.sort((a,b)=>(b.ts||0)-(a.ts||0)); return rows;
+}
+function fmtTs(ts){ try{return new Date(ts).toLocaleString();}catch(e){return ''} }
+function renderLogs(limit=200){
+  const body=document.getElementById('logsBody'); if(!body) return;
+  const rows=allLogs().slice(0,limit);
+  body.innerHTML = rows.map(r=>`<tr><td>${fmtTs(r.ts)}</td><td>${esc(r.q)}</td><td>${esc(r.a)}</td><td>${r.result==='correct'?'○':'×'}</td></tr>`).join('');
+}
+document.getElementById('exportLogs').addEventListener('click', ()=>{
+  const rows=allLogs(); const header=['timestamp','date','question','answer','result'];
+  const escCsv=s=>'"'+String(s).replace(/"/g,'""')+'"';
+  let csv=header.map(escCsv).join(',')+'\n';
+  csv+=rows.map(r=>[r.ts,r.date,r.q,r.a,r.result].map(escCsv).join(',')).join('\n');
+  const blob=new Blob(['\ufeff',csv],{type:'text/csv;charset=utf-8'}); const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download='drill_logs.csv'; a.click(); URL.revokeObjectURL(a.href);
+});
+document.getElementById('exportProgress').addEventListener('click', ()=>{
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(state,null,2)],{type:'application/json'}));
+  a.download='drill_progress.json'; a.click(); URL.revokeObjectURL(a.href);
+});
+document.getElementById('resetAll').addEventListener('click', ()=>{
+  if(confirm('全データ（進捗・ログ）を削除します。よろしいですか？')){
+    localStorage.removeItem(STORE_KEY);
+    state={rows:[],cards:{},lastPlannedDate:null,plannedIds:[],todayCorrect:[]};
+    location.reload();
+  }
+});
+
+// 初期描画
+updateStats(); renderLogs();
+</script>
+</body>
+</html>
