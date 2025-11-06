@@ -1,5 +1,5 @@
 // シンプルな静的キャッシュ（サブフォルダ専用）
-const CACHE_NAME = "thai-drill-v1";
+const CACHE_NAME = "Thai-drill-v1";
 const ASSETS = [
   "./",
   "./index.html",
